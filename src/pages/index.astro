@@ -1,17 +1,552 @@
 ---
+import { getCollection, render } from 'astro:content';
 
+const entries = await getCollection('journal');
+const sorted = entries.sort((a, b) => a.data.day - b.data.day);
+
+// Only entries with coordinates get map markers
+const mappable = sorted.filter(e => e.data.lat != null && e.data.lng != null);
+
+// All entries serialized for panel display
+const allEntryData = sorted.map(e => ({
+  day: e.data.day,
+  title: e.data.title,
+  location: e.data.location,
+  mile: e.data.mile,
+  lat: e.data.lat,
+  lng: e.data.lng,
+  slug: e.id,
+  photos: e.data.photos,
+}));
+
+// Mappable subset for map markers
+const markerData = mappable.map(e => ({
+  day: e.data.day,
+  title: e.data.title,
+  location: e.data.location,
+  mile: e.data.mile,
+  lat: e.data.lat,
+  lng: e.data.lng,
+  slug: e.id,
+  photos: e.data.photos,
+}));
+
+// Render all entry content at build time
+const renderedEntries = await Promise.all(
+  sorted.map(async (entry) => {
+    const { Content } = await render(entry);
+    return { id: entry.id, Content };
+  })
+);
 ---
 
+<!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Appalachian Trail 2013</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Spectral:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style is:global>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink: #1a1410;
+      --ink-muted: #6b5f54;
+      --ink-faint: #a89d92;
+      --paper: #f7f4ef;
+      --paper-warm: #ede9e0;
+      --accent: #4a3728;
+      --border: rgba(74,55,40,0.12);
+      --panel: 25vw;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: 'Spectral', Georgia, serif; display: flex; flex-direction: column; background: var(--paper); }
+
+    /* ── Header ── */
+    header {
+      flex-shrink: 0;
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      background: var(--paper);
+      z-index: 100;
+    }
+
+    .site-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 1.25rem;
+      font-weight: 400;
+      font-style: italic;
+      color: var(--ink);
+    }
+
+    .site-meta {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+
+    /* ── Main layout ── */
+    .main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+
+    /* ── Map ── */
+    #map {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    }
+
+    /* Custom Leaflet tiles to match paper aesthetic */
+    .leaflet-tile-pane { filter: sepia(20%) saturate(80%) brightness(103%); }
+
+    /* ── Journal panel ── */
+    .journal-panel {
+      width: var(--panel);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+      background: var(--paper);
+      overflow: hidden;
+      z-index: 10;
+      transition: width 0.3s ease;
+    }
+    .journal-panel.detail-open { width: 50vw; }
+
+    /* Entry list (default state) */
+    .entry-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .entry-list-header {
+      padding: 1.25rem 1.5rem 0.75rem;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--paper);
+    }
+
+    .entry-list-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+      text-decoration: none;
+      color: inherit;
+    }
+    .entry-list-item:hover { background: var(--paper-warm); }
+    .entry-list-item.active { background: var(--paper-warm); }
+
+    .entry-list-day {
+      font-size: 12px;
+      color: var(--ink-faint);
+      min-width: 36px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .entry-list-info { flex: 1; min-width: 0; }
+
+    .entry-list-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 14px;
+      font-style: italic;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .entry-list-loc {
+      font-size: 11px;
+      color: var(--ink-faint);
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Detail panel ── */
+    .entry-detail {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .entry-detail.visible {
+      display: flex;
+    }
+
+    .entry-list.hidden { display: none; }
+
+    .detail-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .detail-back {
+      padding: 0.85rem 1.5rem;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      color: var(--ink-muted);
+      cursor: pointer;
+      background: none;
+      border: none;
+      text-align: left;
+      font-family: 'Spectral', serif;
+      transition: color 0.15s;
+    }
+    .detail-back:hover { color: var(--ink); }
+
+    .detail-permalink {
+      padding: 0.85rem 1.5rem;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--ink-faint);
+      text-decoration: none;
+      transition: color 0.15s;
+      white-space: nowrap;
+    }
+    .detail-permalink:hover { color: var(--accent); }
+
+    .detail-header {
+      padding: 1.25rem 1.5rem 1rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .detail-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin-bottom: 0.5rem;
+    }
+
+    .detail-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 400;
+      font-style: italic;
+      line-height: 1.3;
+      color: var(--ink);
+    }
+
+    /* ── Photo strip ── */
+    .detail-photo-strip {
+      display: flex;
+      gap: 6px;
+      padding: 0.75rem 1.5rem;
+      overflow-x: auto;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      scrollbar-width: none;
+    }
+    .detail-photo-strip:empty { display: none; }
+    .detail-photo-strip::-webkit-scrollbar { display: none; }
+
+    .detail-photo-strip img {
+      height: 160px;
+      width: auto;
+      object-fit: cover;
+      border-radius: 2px;
+      flex-shrink: 0;
+      display: block;
+    }
+
+    /* ── Prev / next footer ── */
+    .detail-footer {
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      padding: 0 0.25rem;
+    }
+
+    .detail-sibling-link {
+      padding: 0.75rem 1.25rem;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--ink-faint);
+      text-decoration: none;
+      transition: color 0.15s;
+      white-space: nowrap;
+    }
+    .detail-sibling-link:hover { color: var(--accent); }
+    .detail-sibling-link[hidden] { visibility: hidden; display: block; }
+
+    /* Scrollable prose body */
+    .detail-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem 1.5rem 2rem;
+      font-size: 14px;
+      line-height: 1.75;
+      color: var(--ink);
+    }
+
+    .detail-body p { margin-bottom: 1em; }
+    .detail-body p:last-child { margin-bottom: 0; }
+    .detail-body h1, .detail-body h2, .detail-body h3 {
+      font-family: 'Playfair Display', serif;
+      font-weight: 400;
+      margin: 1.25em 0 0.5em;
+      color: var(--ink);
+    }
+    .detail-body ul, .detail-body ol {
+      padding-left: 1.25em;
+      margin-bottom: 1em;
+    }
+    .detail-body li { margin-bottom: 0.25em; }
+    .detail-body em { font-style: italic; }
+    .detail-body strong { font-weight: 600; }
+
+    /* ── Custom map markers ── */
+    .map-marker {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #8a7060;
+      border: 2px solid #f7f4ef;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .map-marker:hover, .map-marker.active {
+      transform: scale(1.6);
+      background: #4a3728;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="site-title">Appalachian Trail, 2013</span>
+    <span class="site-meta">Georgia → Maine · {sorted.length} days</span>
+  </header>
+
+  <div class="main">
+    <div id="map"></div>
+
+    <aside class="journal-panel">
+
+      <!-- Entry list -->
+      <div class="entry-list" id="entry-list">
+        <div class="entry-list-header">All entries</div>
+        {sorted.map(entry => (
+          <a
+            class="entry-list-item"
+            href={`/journal/${entry.id}`}
+            data-slug={entry.id}
+            data-lat={entry.data.lat}
+            data-lng={entry.data.lng}
+            id={`list-item-${entry.id}`}
+          >
+            <span class="entry-list-day">{entry.data.day}</span>
+            <span class="entry-list-info">
+              <span class="entry-list-title">{entry.data.title}</span>
+              <span class="entry-list-loc">{entry.data.location}</span>
+            </span>
+          </a>
+        ))}
+      </div>
+
+      <!-- Detail view -->
+      <div class="entry-detail" id="entry-detail">
+        <div class="detail-nav">
+          <button class="detail-back" id="detail-back">← all entries</button>
+          <a class="detail-permalink" id="detail-permalink" href="#">full entry ↗</a>
+        </div>
+        <div class="detail-header">
+          <div class="detail-eyebrow" id="detail-eyebrow"></div>
+          <div class="detail-title" id="detail-title"></div>
+        </div>
+        <div class="detail-photo-strip" id="detail-photo-strip"></div>
+        <div class="detail-body" id="detail-body"></div>
+        <div class="detail-footer">
+          <a class="detail-sibling-link" id="detail-prev" href="#">← prev</a>
+          <a class="detail-sibling-link" id="detail-next" href="#">next →</a>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- Pre-rendered entry content (hidden, cloned into panel on demand) -->
+  <div id="entry-content-store" hidden aria-hidden="true">
+    {renderedEntries.map(({ id, Content }) => (
+      <div id={`content-${id}`}>
+        <Content />
+      </div>
+    ))}
+  </div>
+
+  <script is:inline src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script define:vars={{ markerData, allEntryData }}>
+
+    // Init map centered on AT midpoint
+    const map = L.map('map', {
+      center: [38.5, -79.5],
+      zoom: 6,
+      zoomControl: true,
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 18,
+    }).addTo(map);
+
+    const latlngs = [];
+    const markerMap = {};
+
+    function createMarkerIcon(active = false) {
+      return L.divIcon({
+        className: '',
+        html: `<div class="map-marker${active ? ' active' : ''}"></div>`,
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      });
+    }
+
+    markerData.forEach(entry => {
+      const ll = [entry.lat, entry.lng];
+      latlngs.push(ll);
+      const marker = L.marker(ll, { icon: createMarkerIcon() }).addTo(map);
+      marker.on('click', () => showDetail(entry, marker));
+      markerMap[entry.slug] = marker;
+    });
+
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, {
+        color: '#8a7060',
+        weight: 2,
+        opacity: 0.5,
+        dashArray: '4 6',
+      }).addTo(map);
+    }
+
+    let activeMarker = null;
+
+    function showDetail(entry, marker = null) {
+      if (activeMarker) activeMarker.setIcon(createMarkerIcon(false));
+      if (marker) {
+        marker.setIcon(createMarkerIcon(true));
+        map.panTo([entry.lat, entry.lng], { animate: true, duration: 0.5 });
+      }
+      activeMarker = marker;
+
+      document.getElementById('detail-eyebrow').textContent =
+        `Day ${entry.day}${entry.mile != null ? ' · Mile ' + entry.mile : ''} · ${entry.location}`;
+      document.getElementById('detail-title').textContent = entry.title;
+      document.getElementById('detail-permalink').href = `/journal/${entry.slug}`;
+
+      // Photo strip
+      const strip = document.getElementById('detail-photo-strip');
+      strip.innerHTML = entry.photos
+        .map(p => `<img src="/photos/${p}" alt="${entry.title}" loading="lazy" />`)
+        .join('');
+
+      // Prose content
+      const stored = document.getElementById(`content-${entry.slug}`);
+      const body = document.getElementById('detail-body');
+      body.innerHTML = stored ? stored.innerHTML : '';
+      body.scrollTop = 0;
+
+      // Prev / next
+      const idx = allEntryData.findIndex(e => e.slug === entry.slug);
+      const prevEntry = idx > 0 ? allEntryData[idx - 1] : null;
+      const nextEntry = idx < allEntryData.length - 1 ? allEntryData[idx + 1] : null;
+
+      const prevEl = document.getElementById('detail-prev');
+      const nextEl = document.getElementById('detail-next');
+
+      if (prevEntry) {
+        prevEl.textContent = `← Day ${prevEntry.day}`;
+        prevEl.removeAttribute('hidden');
+        prevEl.onclick = e => { e.preventDefault(); showDetail(prevEntry, markerMap[prevEntry.slug] ?? null); };
+      } else {
+        prevEl.setAttribute('hidden', '');
+      }
+
+      if (nextEntry) {
+        nextEl.textContent = `Day ${nextEntry.day} →`;
+        nextEl.removeAttribute('hidden');
+        nextEl.onclick = e => { e.preventDefault(); showDetail(nextEntry, markerMap[nextEntry.slug] ?? null); };
+      } else {
+        nextEl.setAttribute('hidden', '');
+      }
+
+      document.getElementById('entry-list').classList.add('hidden');
+      document.getElementById('entry-detail').classList.add('visible');
+
+      const panel = document.querySelector('.journal-panel');
+      panel.classList.add('detail-open');
+      panel.addEventListener('transitionend', () => {
+        map.invalidateSize();
+        if (entry.lat != null && entry.lng != null) {
+          map.setView([entry.lat, entry.lng], 11, { animate: true, duration: 0.3 });
+        }
+      }, { once: true });
+
+      // Highlight active list item
+      document.querySelectorAll('.entry-list-item').forEach(el =>
+        el.classList.toggle('active', el.dataset.slug === entry.slug)
+      );
+    }
+
+    function showList() {
+      if (activeMarker) activeMarker.setIcon(createMarkerIcon(false));
+      activeMarker = null;
+      document.querySelectorAll('.entry-list-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('entry-detail').classList.remove('visible');
+      document.getElementById('entry-list').classList.remove('hidden');
+
+      const panel = document.querySelector('.journal-panel');
+      panel.classList.remove('detail-open');
+      panel.addEventListener('transitionend', () => {
+        map.invalidateSize();
+        map.setZoom(6, { animate: true, duration: 0.5 });
+      }, { once: true });
+    }
+
+    document.getElementById('detail-back').addEventListener('click', showList);
+
+    // List items open in panel (no navigation)
+    document.querySelectorAll('.entry-list-item').forEach(item => {
+      item.addEventListener('click', e => {
+        e.preventDefault();
+        const slug = item.dataset.slug;
+        const entry = allEntryData.find(e => e.slug === slug);
+        if (!entry) return;
+        const marker = markerMap[slug] ?? null;
+        showDetail(entry, marker);
+      });
+    });
+
+  </script>
+
+</body>
 </html>

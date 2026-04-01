@@ -1,0 +1,25 @@
+---
+import { getCollection, render } from 'astro:content';
+import EntryLayout from '../../layouts/EntryLayout.astro';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('journal');
+  const sorted = entries.sort((a, b) => a.data.day - b.data.day);
+
+  return sorted.map((entry, i) => ({
+    params: { slug: entry.id },
+    props: {
+      entry,
+      prevEntry: i > 0 ? sorted[i - 1] : undefined,
+      nextEntry: i < sorted.length - 1 ? sorted[i + 1] : undefined,
+    },
+  }));
+}
+
+const { entry, prevEntry, nextEntry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<EntryLayout entry={entry} prevEntry={prevEntry} nextEntry={nextEntry}>
+  <Content />
+</EntryLayout>

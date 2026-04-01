@@ -1,0 +1,365 @@
+---
+import type { CollectionEntry } from 'astro:content';
+
+interface Props {
+  entry: CollectionEntry<'journal'>;
+  prevEntry?: CollectionEntry<'journal'>;
+  nextEntry?: CollectionEntry<'journal'>;
+}
+
+const { entry, prevEntry, nextEntry } = Astro.props;
+const { day, title, location, mile, photos } = entry.data;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day {day} – {title} | AT 2013</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Spectral:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink: #1a1410;
+      --ink-muted: #6b5f54;
+      --ink-faint: #a89d92;
+      --paper: #f7f4ef;
+      --paper-warm: #ede9e0;
+      --accent: #4a3728;
+      --border: rgba(74,55,40,0.12);
+    }
+
+    html { background: var(--paper); color: var(--ink); }
+
+    body {
+      font-family: 'Spectral', Georgia, serif;
+      font-weight: 300;
+      min-height: 100vh;
+    }
+
+    /* ── Top nav ── */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--paper);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-home {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 14px;
+      font-style: italic;
+      color: var(--ink-muted);
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+    .nav-home:hover { color: var(--ink); }
+
+    .nav-arrows {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .nav-arrow {
+      font-family: 'Spectral', serif;
+      font-size: 13px;
+      color: var(--ink-muted);
+      text-decoration: none;
+      padding: 4px 12px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .nav-arrow:hover { color: var(--ink); border-color: rgba(74,55,40,0.3); }
+    .nav-arrow.disabled { opacity: 0.3; pointer-events: none; }
+
+    /* ── Hero photos ── */
+    .photo-carousel {
+      width: 100%;
+      position: relative;
+      background: var(--paper-warm);
+      overflow: hidden;
+    }
+
+    .carousel-track {
+      display: flex;
+      transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .carousel-slide {
+      min-width: 100%;
+      height: clamp(300px, 55vw, 640px);
+      overflow: hidden;
+    }
+
+    .carousel-slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .carousel-empty {
+      min-width: 100%;
+      height: clamp(200px, 30vw, 360px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-style: italic;
+      color: var(--ink-faint);
+      font-size: 14px;
+    }
+
+    .carousel-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(247,244,239,0.85);
+      border: 1px solid var(--border);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: var(--ink);
+      transition: all 0.15s;
+      z-index: 2;
+    }
+    .carousel-btn:hover { background: var(--paper); }
+    .carousel-btn.prev { left: 1rem; }
+    .carousel-btn.next { right: 1rem; }
+    .carousel-btn[hidden] { display: none; }
+
+    .carousel-dots {
+      position: absolute;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+    }
+
+    .carousel-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.5);
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      transition: all 0.15s;
+    }
+    .carousel-dot.active { background: rgba(255,255,255,0.95); transform: scale(1.3); }
+
+    /* ── Entry header ── */
+    .entry-header {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 3rem 2rem 1.5rem;
+    }
+
+    .entry-eyebrow {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin-bottom: 1rem;
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .entry-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 400;
+      line-height: 1.2;
+      color: var(--ink);
+      margin-bottom: 2rem;
+    }
+
+    .entry-divider {
+      width: 40px;
+      height: 1px;
+      background: var(--accent);
+      opacity: 0.3;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Body text ── */
+    .entry-body {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 2rem 6rem;
+      font-size: 1.125rem;
+      line-height: 1.85;
+      color: var(--ink);
+    }
+
+    .entry-body p {
+      margin-bottom: 1.5em;
+    }
+
+    .entry-body p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      border-top: 1px solid var(--border);
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 2rem 2rem 4rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .bottom-nav-link {
+      text-decoration: none;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .bottom-nav-link:hover { border-color: rgba(74,55,40,0.3); background: var(--paper-warm); }
+    .bottom-nav-link.next-link { text-align: right; }
+
+    .bottom-nav-direction {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin-bottom: 0.25rem;
+    }
+
+    .bottom-nav-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 15px;
+      color: var(--ink);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="top-nav">
+    <a href="/" class="nav-home">AT 2013</a>
+    <div class="nav-arrows">
+      {prevEntry
+        ? <a href={`/journal/${prevEntry.id}`} class="nav-arrow">← Day {prevEntry.data.day}</a>
+        : <span class="nav-arrow disabled">← prev</span>
+      }
+      {nextEntry
+        ? <a href={`/journal/${nextEntry.id}`} class="nav-arrow">Day {nextEntry.data.day} →</a>
+        : <span class="nav-arrow disabled">next →</span>
+      }
+    </div>
+  </nav>
+
+  <!-- Photo carousel -->
+  {photos.length > 0 ? (
+    <div class="photo-carousel" id="carousel">
+      <div class="carousel-track" id="carousel-track">
+        {photos.map((photo: string) => (
+          <div class="carousel-slide">
+            <img src={`/photos/${photo}`} alt={`Day ${day} – ${location}`} loading="lazy" />
+          </div>
+        ))}
+      </div>
+      {photos.length > 1 && (
+        <>
+          <button class="carousel-btn prev" id="carousel-prev" aria-label="Previous photo">‹</button>
+          <button class="carousel-btn next" id="carousel-next" aria-label="Next photo">›</button>
+          <div class="carousel-dots" id="carousel-dots">
+            {photos.map((_: string, i: number) => (
+              <button class={`carousel-dot ${i === 0 ? 'active' : ''}`} data-index={i} aria-label={`Photo ${i + 1}`} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  ) : (
+    <div class="photo-carousel">
+      <div class="carousel-empty">no photos for this day</div>
+    </div>
+  )}
+
+  <!-- Entry header -->
+  <header class="entry-header">
+    <div class="entry-eyebrow">
+      <span>Day {day}</span>
+      {mile != null && <span>Mile {mile}</span>}
+      <span>{location}</span>
+    </div>
+    <h1 class="entry-title">{title}</h1>
+    <div class="entry-divider"></div>
+  </header>
+
+  <!-- Journal text -->
+  <article class="entry-body">
+    <slot />
+  </article>
+
+  <!-- Bottom prev/next -->
+  <nav class="bottom-nav">
+    {prevEntry ? (
+      <a href={`/journal/${prevEntry.id}`} class="bottom-nav-link">
+        <div class="bottom-nav-direction">← previous</div>
+        <div class="bottom-nav-title">{prevEntry.data.title}</div>
+      </a>
+    ) : <div />}
+    {nextEntry && (
+      <a href={`/journal/${nextEntry.id}`} class="bottom-nav-link next-link">
+        <div class="bottom-nav-direction">next →</div>
+        <div class="bottom-nav-title">{nextEntry.data.title}</div>
+      </a>
+    )}
+  </nav>
+
+  <script>
+    // Photo carousel
+    const track = document.getElementById('carousel-track');
+    const dots = document.querySelectorAll('.carousel-dot');
+    const prevBtn = document.getElementById('carousel-prev');
+    const nextBtn = document.getElementById('carousel-next');
+
+    if (track) {
+      let current = 0;
+      const total = track.children.length;
+
+      function goTo(idx: number) {
+        current = Math.max(0, Math.min(idx, total - 1));
+        (track as HTMLElement).style.transform = `translateX(-${current * 100}%)`;
+        dots.forEach((d, i) => d.classList.toggle('active', i === current));
+        if (prevBtn) (prevBtn as HTMLButtonElement).hidden = current === 0;
+        if (nextBtn) (nextBtn as HTMLButtonElement).hidden = current === total - 1;
+      }
+
+      prevBtn?.addEventListener('click', () => goTo(current - 1));
+      nextBtn?.addEventListener('click', () => goTo(current + 1));
+      dots.forEach((dot, i) => dot.addEventListener('click', () => goTo(i)));
+
+      // Initialize button visibility
+      goTo(0);
+    }
+  </script>
+
+</body>
+</html>
