@@ -5,6 +5,7 @@ const journal = defineCollection({
   loader: glob({ pattern: "**/*.md", base: "./src/content/journal" }),
   schema: z.object({
     day: z.number(),
+    date: z.coerce.date(),
     title: z.string(),
     location: z.string(),
     lat: z.number().nullable(),

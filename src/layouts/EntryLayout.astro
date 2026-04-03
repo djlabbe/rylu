@@ -8,7 +8,7 @@ interface Props {
 }
 
 const { entry, prevEntry, nextEntry } = Astro.props;
-const { day, title, location, mile, photos } = entry.data;
+const { day, title, location, mile, photos, date } = entry.data;
 ---
 
 <!DOCTYPE html>
@@ -48,22 +48,21 @@ const { day, title, location, mile, photos } = entry.data;
       z-index: 10;
       background: var(--paper);
       border-bottom: 1px solid var(--border);
-      padding: 0 2rem;
-      height: 52px;
+      padding: 1.25rem 2rem;
       display: flex;
-      align-items: center;
+      align-items: baseline;
       justify-content: space-between;
     }
 
     .nav-home {
       font-family: 'Playfair Display', Georgia, serif;
-      font-size: 14px;
+      font-size: 1.25rem;
+      font-weight: 400;
       font-style: italic;
-      color: var(--ink-muted);
+      color: var(--ink);
       text-decoration: none;
-      letter-spacing: 0.02em;
     }
-    .nav-home:hover { color: var(--ink); }
+    .nav-home:hover { color: var(--ink-muted); }
 
     .nav-arrows {
       display: flex;
@@ -102,6 +101,7 @@ const { day, title, location, mile, photos } = entry.data;
       min-width: 100%;
       height: clamp(300px, 55vw, 640px);
       overflow: hidden;
+      cursor: zoom-in;
     }
 
     .carousel-slide img {
@@ -109,6 +109,68 @@ const { day, title, location, mile, photos } = entry.data;
       height: 100%;
       object-fit: cover;
       display: block;
+    }
+
+    /* ── Lightbox ── */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,0.92);
+      align-items: center;
+      justify-content: center;
+    }
+    .lightbox.open { display: flex; }
+
+    .lightbox img {
+      max-width: 92vw;
+      max-height: 92vh;
+      object-fit: contain;
+      border-radius: 2px;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 1.25rem;
+      right: 1.25rem;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      font-size: 2rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0.25rem 0.5rem;
+      transition: color 0.15s;
+    }
+    .lightbox-close:hover { color: #fff; }
+
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.5);
+      font-size: 3rem;
+      cursor: pointer;
+      padding: 1rem;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .lightbox-nav:hover { color: #fff; }
+    .lightbox-nav.prev { left: 0.5rem; }
+    .lightbox-nav.next { right: 0.5rem; }
+    .lightbox-nav:disabled { opacity: 0.15; pointer-events: none; }
+
+    .lightbox-counter {
+      position: absolute;
+      bottom: 1.25rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.45);
     }
 
     .carousel-empty {
@@ -260,7 +322,7 @@ const { day, title, location, mile, photos } = entry.data;
 <body>
 
   <nav class="top-nav">
-    <a href="/" class="nav-home">AT 2013</a>
+    <a href="/" class="nav-home">Rylu · Appalachian Trail · 2013</a>
     <div class="nav-arrows">
       {prevEntry
         ? <a href={`/journal/${prevEntry.id}`} class="nav-arrow">← Day {prevEntry.data.day}</a>
@@ -279,7 +341,7 @@ const { day, title, location, mile, photos } = entry.data;
       <div class="carousel-track" id="carousel-track">
         {photos.map((photo: string) => (
           <div class="carousel-slide">
-            <img src={`/photos/${photo}`} alt={`Day ${day} – ${location}`} loading="lazy" />
+            <img src={`https://photos.dlabbe.com/photos/web/${photo.replace(/\.[^.]+$/, '.webp')}`} alt={`Day ${day} – ${location}`} loading="lazy" />
           </div>
         ))}
       </div>
@@ -305,8 +367,8 @@ const { day, title, location, mile, photos } = entry.data;
   <header class="entry-header">
     <div class="entry-eyebrow">
       <span>Day {day}</span>
+      <span>{date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span>
       {mile != null && <span>Mile {mile}</span>}
-      <span>{location}</span>
     </div>
     <h1 class="entry-title">{title}</h1>
     <div class="entry-divider"></div>
@@ -333,6 +395,15 @@ const { day, title, location, mile, photos } = entry.data;
     )}
   </nav>
 
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox">
+    <button class="lightbox-close" id="lightbox-close">×</button>
+    <button class="lightbox-nav prev" id="lightbox-prev">‹</button>
+    <img id="lightbox-img" src="" alt="" />
+    <button class="lightbox-nav next" id="lightbox-next">›</button>
+    <div class="lightbox-counter" id="lightbox-counter"></div>
+  </div>
+
   <script>
     // Photo carousel
     const track = document.getElementById('carousel-track');
@@ -356,8 +427,56 @@ const { day, title, location, mile, photos } = entry.data;
       nextBtn?.addEventListener('click', () => goTo(current + 1));
       dots.forEach((dot, i) => dot.addEventListener('click', () => goTo(i)));
 
-      // Initialize button visibility
       goTo(0);
+
+      // Lightbox
+      const lightbox = document.getElementById('lightbox')!;
+      const lightboxImg = document.getElementById('lightbox-img') as HTMLImageElement;
+      const lightboxCounter = document.getElementById('lightbox-counter')!;
+      const lightboxPrev = document.getElementById('lightbox-prev') as HTMLButtonElement;
+      const lightboxNext = document.getElementById('lightbox-next') as HTMLButtonElement;
+      const slides = Array.from(track.querySelectorAll('.carousel-slide img')) as HTMLImageElement[];
+
+      let lightboxIdx = 0;
+
+      function openLightbox(idx: number) {
+        lightboxIdx = idx;
+        lightboxImg.src = slides[idx].src;
+        lightboxImg.alt = slides[idx].alt;
+        lightboxCounter.textContent = total > 1 ? `${idx + 1} / ${total}` : '';
+        lightboxPrev.disabled = idx === 0;
+        lightboxNext.disabled = idx === total - 1;
+        lightbox.classList.add('open');
+      }
+
+      function closeLightbox() { lightbox.classList.remove('open'); }
+
+      slides.forEach((img, i) => img.closest('.carousel-slide')!.addEventListener('click', () => openLightbox(i)));
+
+      lightboxPrev.addEventListener('click', () => openLightbox(lightboxIdx - 1));
+      lightboxNext.addEventListener('click', () => openLightbox(lightboxIdx + 1));
+      document.getElementById('lightbox-close')!.addEventListener('click', closeLightbox);
+      lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+
+      document.addEventListener('keydown', e => {
+        if (lightbox.classList.contains('open')) {
+          if (e.key === 'ArrowLeft') lightboxPrev.click();
+          if (e.key === 'ArrowRight') lightboxNext.click();
+          if (e.key === 'Escape') closeLightbox();
+          return;
+        }
+        navigateEntries(e);
+      });
+    }
+
+    function navigateEntries(e: KeyboardEvent) {
+      const [navPrev, navNext] = document.querySelectorAll('.nav-arrow');
+      if (e.key === 'ArrowLeft' && !navPrev?.classList.contains('disabled')) (navPrev as HTMLElement).click();
+      if (e.key === 'ArrowRight' && !navNext?.classList.contains('disabled')) (navNext as HTMLElement).click();
+    }
+
+    if (!track) {
+      document.addEventListener('keydown', navigateEntries);
     }
   </script>
 

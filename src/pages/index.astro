@@ -11,6 +11,7 @@ const mappable = sorted.filter(e => e.data.lat != null && e.data.lng != null);
 const allEntryData = sorted.map(e => ({
   day: e.data.day,
   title: e.data.title,
+  date: e.data.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }),
   location: e.data.location,
   mile: e.data.mile,
   lat: e.data.lat,
@@ -61,7 +62,7 @@ const renderedEntries = await Promise.all(
       --paper-warm: #ede9e0;
       --accent: #4a3728;
       --border: rgba(74,55,40,0.12);
-      --panel: 25vw;
+      --panel: 33vw;
     }
 
     html, body { height: 100%; overflow: hidden; }
@@ -180,10 +181,10 @@ const renderedEntries = await Promise.all(
     .entry-list-loc {
       font-size: 11px;
       color: var(--ink-faint);
-      margin-top: 1px;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      flex-shrink: 0;
+      margin-left: auto;
+      padding-left: 0.75rem;
     }
 
     /* ── Detail panel ── */
@@ -344,8 +345,8 @@ const renderedEntries = await Promise.all(
 <body>
 
   <header>
-    <span class="site-title">Appalachian Trail, 2013</span>
-    <span class="site-meta">Georgia → Maine · {sorted.length} days</span>
+    <span class="site-title">Rylu · Appalachian Trail · 2013</span>
+    <span class="site-meta">Georgia → Maine · {sorted.length - 1} days</span>
   </header>
 
   <div class="main">
@@ -368,8 +369,8 @@ const renderedEntries = await Promise.all(
             <span class="entry-list-day">{entry.data.day}</span>
             <span class="entry-list-info">
               <span class="entry-list-title">{entry.data.title}</span>
-              <span class="entry-list-loc">{entry.data.location}</span>
             </span>
+            <span class="entry-list-loc">{entry.data.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })}</span>
           </a>
         ))}
       </div>
@@ -414,10 +415,13 @@ const renderedEntries = await Promise.all(
       zoomControl: true,
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 18,
-    }).addTo(map);
+
+// Swap the active layer by changing which line is uncommented
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 18,
+  }).addTo(map);
 
     const latlngs = [];
     const markerMap = {};
@@ -459,14 +463,14 @@ const renderedEntries = await Promise.all(
       activeMarker = marker;
 
       document.getElementById('detail-eyebrow').textContent =
-        `Day ${entry.day}${entry.mile != null ? ' · Mile ' + entry.mile : ''} · ${entry.location}`;
+        `Day ${entry.day} · ${entry.date}${entry.mile != null ? ' · Mile ' + entry.mile : ''}`;
       document.getElementById('detail-title').textContent = entry.title;
       document.getElementById('detail-permalink').href = `/journal/${entry.slug}`;
 
       // Photo strip
       const strip = document.getElementById('detail-photo-strip');
-      strip.innerHTML = entry.photos
-        .map(p => `<img src="/photos/${p}" alt="${entry.title}" loading="lazy" />`)
+      strip.innerHTML = (entry.photos || [])
+        .map(p => `<img src="https://photos.dlabbe.com/photos/thumbs/${p.replace(/\.[^.]+$/, '.webp')}" alt="${entry.title}" loading="lazy" />`)
         .join('');
 
       // Prose content
@@ -507,7 +511,7 @@ const renderedEntries = await Promise.all(
       panel.addEventListener('transitionend', () => {
         map.invalidateSize();
         if (entry.lat != null && entry.lng != null) {
-          map.setView([entry.lat, entry.lng], 11, { animate: true, duration: 0.3 });
+          map.setView([entry.lat, entry.lng], 9, { animate: true, duration: 0.3 });
         }
       }, { once: true });
 
@@ -533,6 +537,13 @@ const renderedEntries = await Promise.all(
     }
 
     document.getElementById('detail-back').addEventListener('click', showList);
+
+    document.addEventListener('keydown', e => {
+      const detail = document.getElementById('entry-detail');
+      if (!detail.classList.contains('visible')) return;
+      if (e.key === 'ArrowLeft') document.getElementById('detail-prev').click();
+      if (e.key === 'ArrowRight') document.getElementById('detail-next').click();
+    });
 
     // List items open in panel (no navigation)
     document.querySelectorAll('.entry-list-item').forEach(item => {
