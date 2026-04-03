@@ -112,6 +112,11 @@ const renderedEntries = await Promise.all(
     /* Custom Leaflet tiles to match paper aesthetic */
     .leaflet-tile-pane { filter: sepia(20%) saturate(80%) brightness(103%); }
 
+    @media (max-width: 640px) {
+      #map { display: none; }
+      .journal-panel { width: 100% !important; border-left: none; }
+    }
+
     /* ── Journal panel ── */
     .journal-panel {
       width: var(--panel);
