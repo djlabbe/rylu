@@ -74,10 +74,11 @@ const renderedEntries = await Promise.all(
       padding: 1.25rem 2rem;
       border-bottom: 1px solid var(--border);
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
       background: var(--paper);
       z-index: 100;
+      position: relative;
     }
 
     .site-title {
@@ -93,7 +94,20 @@ const renderedEntries = await Promise.all(
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--ink-faint);
+      display: flex;
+      align-items: baseline;
+      gap: 1.5rem;
     }
+
+    .site-about {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .site-about:hover { color: var(--ink-muted); }
 
     /* ── Main layout ── */
     .main {
@@ -380,7 +394,8 @@ const renderedEntries = await Promise.all(
 
   <header>
     <span class="site-title">Rylu · Appalachian Trail · 2013</span>
-    <span class="site-meta">Georgia → Maine · {sorted.length - 1} days</span>
+    <span style="position:absolute;left:50%;transform:translate(-50%,-50%);top:50%" class="site-meta">Georgia → Maine · {sorted.length - 1} days</span>
+    <a href="/about" class="site-about">About</a>
   </header>
 
   <div class="main">
