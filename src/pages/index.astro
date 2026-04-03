@@ -258,16 +258,21 @@ const renderedEntries = await Promise.all(
     }
 
     /* ── Photo strip ── */
+    .detail-photo-wrap {
+      position: relative;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-photo-wrap:has(#detail-photo-strip:empty) { display: none; }
+
     .detail-photo-strip {
       display: flex;
       gap: 6px;
       padding: 0.75rem 1.5rem;
       overflow-x: auto;
-      flex-shrink: 0;
-      border-bottom: 1px solid var(--border);
       scrollbar-width: none;
+      scroll-behavior: smooth;
     }
-    .detail-photo-strip:empty { display: none; }
     .detail-photo-strip::-webkit-scrollbar { display: none; }
 
     .detail-photo-strip img {
@@ -278,6 +283,30 @@ const renderedEntries = await Promise.all(
       flex-shrink: 0;
       display: block;
     }
+
+    .strip-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(247,244,239,0.9);
+      border: 1px solid var(--border);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+      transition: opacity 0.15s;
+      line-height: 1;
+    }
+    .strip-btn:hover { background: var(--paper); }
+    .strip-btn.hidden { opacity: 0; pointer-events: none; }
+    .strip-btn-left { left: 0.3rem; }
+    .strip-btn-right { right: 0.3rem; }
 
     /* ── Prev / next footer ── */
     .detail-footer {
@@ -385,7 +414,11 @@ const renderedEntries = await Promise.all(
           <div class="detail-eyebrow" id="detail-eyebrow"></div>
           <div class="detail-title" id="detail-title"></div>
         </div>
-        <div class="detail-photo-strip" id="detail-photo-strip"></div>
+        <div class="detail-photo-wrap" id="detail-photo-wrap">
+          <button class="strip-btn strip-btn-left" id="strip-prev">‹</button>
+          <div class="detail-photo-strip" id="detail-photo-strip"></div>
+          <button class="strip-btn strip-btn-right" id="strip-next">›</button>
+        </div>
         <div class="detail-body" id="detail-body"></div>
         <div class="detail-footer">
           <a class="detail-sibling-link" id="detail-prev" href="#">← prev</a>
@@ -472,6 +505,14 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       strip.innerHTML = (entry.photos || [])
         .map(p => `<img src="https://photos.dlabbe.com/photos/thumbs/${p.replace(/\.[^.]+$/, '.webp')}" alt="${entry.title}" loading="lazy" />`)
         .join('');
+      strip.scrollLeft = 0;
+      stripPrev.classList.add('hidden');
+      stripNext.classList.add('hidden');
+      const imgs = Array.from(strip.querySelectorAll('img'));
+      if (imgs.length > 0) {
+        Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(r => img.addEventListener('load', r, { once: true }))))
+          .then(updateStripButtons);
+      }
 
       // Prose content
       const stored = document.getElementById(`content-${entry.slug}`);
@@ -537,6 +578,23 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     }
 
     document.getElementById('detail-back').addEventListener('click', showList);
+
+    // Strip scroll buttons
+    const stripEl = document.getElementById('detail-photo-strip');
+    const stripPrev = document.getElementById('strip-prev');
+    const stripNext = document.getElementById('strip-next');
+    const SCROLL_AMT = 300;
+
+    function updateStripButtons() {
+      const atStart = stripEl.scrollLeft <= 4;
+      const atEnd = stripEl.scrollLeft >= stripEl.scrollWidth - stripEl.clientWidth - 4;
+      stripPrev.classList.toggle('hidden', atStart);
+      stripNext.classList.toggle('hidden', atEnd || stripEl.scrollWidth <= stripEl.clientWidth);
+    }
+
+    stripPrev.addEventListener('click', () => { stripEl.scrollLeft -= SCROLL_AMT; });
+    stripNext.addEventListener('click', () => { stripEl.scrollLeft += SCROLL_AMT; });
+    stripEl.addEventListener('scroll', updateStripButtons);
 
     document.addEventListener('keydown', e => {
       const detail = document.getElementById('entry-detail');
